@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Artist {
+  id            String    @id @default(cuid())
+  name          String
+  bio           String?
+  imageUrl      String?
+  location      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  releases      Release[]
+  collaborators ArtistCollaboration[]
+  remixes       Remix[]
+}
+
+model Label {
+  id        String    @id @default(cuid())
+  name      String
+  bio       String?
+  imageUrl  String?
+  location  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  releases  Release[]
+}
+
+model Release {
+  id        String   @id @default(cuid())
+  title     String
+  year      Int
+  imageUrl  String?
+  genres    String[]
+  artistId  String
+  labelId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  artist    Artist   @relation(fields: [artistId], references: [id])
+  label     Label    @relation(fields: [labelId], references: [id])
+  remixes   Remix[]
+}
+
+model ArtistCollaboration {
+  id            String   @id @default(cuid())
+  artistId      String
+  collaboratorId String
+  createdAt     DateTime @default(now())
+  artist        Artist   @relation(fields: [artistId], references: [id])
+}
+
+model Remix {
+  id           String   @id @default(cuid())
+  originalId   String
+  remixerId    String
+  releaseDate  DateTime
+  createdAt    DateTime @default(now())
+  original     Release  @relation(fields: [originalId], references: [id])
+  remixer      Artist   @relation(fields: [remixerId], references: [id])
+}
