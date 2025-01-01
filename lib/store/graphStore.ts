@@ -1,3 +1,4 @@
+// lib/store/graphStore.ts
 import { create } from 'zustand';
 import { GraphNode, GraphLink } from '@/lib/types/graph';
 

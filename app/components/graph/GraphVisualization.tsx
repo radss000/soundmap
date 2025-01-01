@@ -1,3 +1,4 @@
+// app/components/graph/GraphVisualization.tsx
 'use client';
 
 import { useRef } from 'react';
@@ -10,7 +11,6 @@ export default function GraphVisualization() {
   const graphRef = useRef();
   const { nodes, links, setSelectedNode } = useGraphStore();
   
-  // Initialize graph data
   useGraphInitialization();
 
   return (
@@ -19,12 +19,12 @@ export default function GraphVisualization() {
         ref={graphRef}
         graphData={{ nodes, links }}
         nodeLabel="name"
+        backgroundColor="rgba(0,0,0,0)"
         nodeColor={(node) => node.color}
-        nodeVal={(node) => node.size}
-        linkColor={() => 'rgba(255, 255, 255, 0.3)'}
+        nodeVal={(node) => node.size || 10}
+        linkColor={() => 'rgba(255, 255, 255, 0.2)'}
         linkWidth={1}
         linkOpacity={0.2}
-        backgroundColor="transparent"
         onNodeClick={(node) => setSelectedNode(node)}
         nodeThreeObject={createNodeObject}
         nodeThreeObjectExtend={false}

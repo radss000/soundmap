@@ -1,3 +1,4 @@
+// lib/types/graph.ts
 export interface GraphNode {
   id: string;
   name: string;
