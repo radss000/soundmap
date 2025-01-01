@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/lib/store/graphStore';
 
-export function EnhancedSearchBar() {
+export function SearchBar() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
   const debouncedValue = useDebounce(value, 300);
