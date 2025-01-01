@@ -1,6 +1,8 @@
+// /app/layout.tsx
 import './globals.css';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { TRPCProvider } from '@/lib/trpc/Provider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,7 +20,9 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <TRPCProvider>
+            {children}
+          </TRPCProvider>
         </ThemeProvider>
       </body>
     </html>
