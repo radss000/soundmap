@@ -1,10 +1,15 @@
 'use client';
 
 import { Suspense } from 'react';
-import GraphVisualization from '@/app/components/graph/GraphVisualization';
+import dynamic from 'next/dynamic';
 import { SearchBar } from '@/app/components/search/SearchBar';
 import { FilterPanel } from '@/app/components/search/FilterPanel';
 import { NodeDetails } from '@/app/components/graph/NodeDetails';
+
+const GraphVisualization = dynamic(
+  () => import('@/app/components/graph/GraphVisualization'),
+  { ssr: false }
+);
 
 export default function ExplorePage() {
   return (
@@ -13,9 +18,7 @@ export default function ExplorePage() {
         <SearchBar />
         <FilterPanel />
       </div>
-      <Suspense fallback={<div>Loading...</div>}>
-        <GraphVisualization />
-      </Suspense>
+      <GraphVisualization />
       <NodeDetails />
     </div>
   );

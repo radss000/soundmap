@@ -1,4 +1,6 @@
 // lib/store/graphStore.ts
+'use client';
+
 import { create } from 'zustand';
 import { GraphNode, GraphLink } from '@/lib/types/graph';
 
@@ -17,5 +19,5 @@ export const useGraphStore = create<GraphStore>((set) => ({
   selectedNode: null,
   setNodes: (nodes) => set({ nodes }),
   setLinks: (links) => set({ links }),
-  setSelectedNode: (node) => set({ selectedNode: node }),
+  setSelectedNode: (node) => set({ selectedNode: node })
 }));

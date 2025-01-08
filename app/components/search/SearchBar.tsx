@@ -1,15 +1,17 @@
-import { useState, useCallback, useEffect } from 'react';
+// app/components/search/SearchBar.tsx
+'use client';
+
+import { useState, useCallback } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { trpc } from '@/lib/trpc/client';
 import { Search, Loader2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import {
   Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandList
+  CommandList,
 } from '@/components/ui/command';
 import {
   Popover,
@@ -25,69 +27,44 @@ export function SearchBar() {
   const debouncedValue = useDebounce(value, 300);
   const { setNodes, setLinks } = useGraphStore();
 
+  // Utiliser la mutation TRPC pour la recherche
   const searchQuery = trpc.artist.search.useQuery(
     { 
       query: debouncedValue,
       page: 1,
-      limit: 10 
+      perPage: 10 
     },
     {
       enabled: debouncedValue.length > 0,
+      onSuccess: (data) => {
+        console.log('Search results:', data); // Pour débugger
+      },
+      onError: (error) => {
+        console.error('Search error:', error);
+      }
     }
   );
 
-  const handleSelect = useCallback((artistId: string) => {
-    // Fetch artist details and related artists
-    const fetchArtistData = async () => {
-      const [artist, related] = await Promise.all([
-        trpc.artist.getById.fetch(artistId),
-        trpc.artist.getRelated.fetch(artistId)
-      ]);
-
-      // Transform data for graph visualization
-      const nodes = [
+  // Gérer la sélection d'un artiste
+  const handleSelect = useCallback(async (artistId: string) => {
+    console.log('Selected artist:', artistId);
+    try {
+      // On va temporairement créer des données de test
+      // jusqu'à ce que getGraph soit implémenté
+      setNodes([
         {
-          id: artist.id,
-          name: artist.name,
+          id: artistId,
+          name: "Selected Artist",
           type: 'artist',
-          color: '#ff4081',
+          color: 'rgb(255, 64, 129)',
           size: 20
-        },
-        ...related.collaborations.map((collab: any) => ({
-          id: collab.id,
-          name: collab.name,
-          type: 'artist',
-          color: '#ff4081',
-          size: 15
-        })),
-        ...related.releases.map((release: any) => ({
-          id: release.id,
-          name: release.title,
-          type: 'release',
-          color: '#4caf50',
-          size: 12
-        }))
-      ];
-
-      const links = [
-        ...related.collaborations.map((collab: any) => ({
-          source: artist.id,
-          target: collab.id,
-          type: 'collaboration'
-        })),
-        ...related.releases.map((release: any) => ({
-          source: artist.id,
-          target: release.id,
-          type: 'release'
-        }))
-      ];
-
-      setNodes(nodes);
-      setLinks(links);
-    };
-
-    fetchArtistData();
-    setOpen(false);
+        }
+      ]);
+      setLinks([]);
+      setOpen(false);
+    } catch (error) {
+      console.error('Error selecting artist:', error);
+    }
   }, [setNodes, setLinks]);
 
   return (
@@ -116,19 +93,26 @@ export function SearchBar() {
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
-            ) : (
+            ) : searchQuery.data ? (
               <CommandGroup heading="Artists">
-                {searchQuery.data?.results.map((artist: any) => (
+                {searchQuery.data.results.map((artist) => (
                   <CommandItem
                     key={artist.id}
                     value={artist.id}
                     onSelect={() => handleSelect(artist.id)}
                   >
-                    {artist.name}
+                    {artist.imageUrl && (
+                      <img
+                        src={artist.imageUrl}
+                        alt={artist.name}
+                        className="h-8 w-8 rounded-full object-cover mr-2"
+                      />
+                    )}
+                    <span>{artist.name}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
-            )}
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>

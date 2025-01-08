@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
@@ -20,9 +20,7 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <TRPCProvider>
-            {children}
-          </TRPCProvider>
+          <TRPCProvider>{children}</TRPCProvider>
         </ThemeProvider>
       </body>
     </html>

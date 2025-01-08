@@ -1,3 +1,4 @@
+// /server/api/root.ts
 import { createTRPCRouter } from '@/server/api/trpc';
 import { artistRouter } from './routers/artist';
 import { labelRouter } from './routers/label';
@@ -9,4 +10,5 @@ export const appRouter = createTRPCRouter({
   release: releaseRouter,
 });
 
+// Export type router type signature, not the router itself
 export type AppRouter = typeof appRouter;

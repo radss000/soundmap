@@ -1483,17 +1483,17 @@
   dependencies:
     tslib "^2.4.0"
 
-"@tanstack/query-core@5.62.9":
-  version "5.62.9"
-  resolved "https://registry.npmjs.org/@tanstack/query-core/-/query-core-5.62.9.tgz"
-  integrity sha512-lwePd8hNYhyQ4nM/iRQ+Wz2cDtspGeZZHFZmCzHJ7mfKXt+9S301fULiY2IR2byJYY6Z03T427E5PoVfMexHjw==
+"@tanstack/query-core@5.62.16":
+  version "5.62.16"
+  resolved "https://registry.npmjs.org/@tanstack/query-core/-/query-core-5.62.16.tgz"
+  integrity sha512-9Sgft7Qavcd+sN0V25xVyo0nfmcZXBuODy3FVG7BMWTg1HMLm8wwG5tNlLlmSic1u7l1v786oavn+STiFaPH2g==
 
-"@tanstack/react-query@^5.59.15", "@tanstack/react-query@^5.62.11", "@tanstack/react-query@^5.62.8":
-  version "5.62.11"
-  resolved "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.62.11.tgz"
-  integrity sha512-Xb1nw0cYMdtFmwkvH9+y5yYFhXvLRCnXoqlzSw7UkqtCVFq3cG8q+rHZ2Yz1XrC+/ysUaTqbLKJqk95mCgC1oQ==
+"@tanstack/react-query@^5.59.15", "@tanstack/react-query@^5.62.16", "@tanstack/react-query@^5.62.8":
+  version "5.62.16"
+  resolved "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.62.16.tgz"
+  integrity sha512-XJIZNj65d2IdvU8VBESmrPakfIm6FSdHDzrS1dPrAwmq3ZX+9riMh/ZfbNQHAWnhrgmq7KoXpgZSRyXnqMYT9A==
   dependencies:
-    "@tanstack/query-core" "5.62.9"
+    "@tanstack/query-core" "5.62.16"
 
 "@testing-library/dom@^9.0.0":
   version "9.3.4"
@@ -5689,7 +5689,7 @@ react-composer@^5.0.3:
     loose-envify "^1.1.0"
     scheduler "^0.23.0"
 
-react-force-graph-3d@^1.24.2:
+react-force-graph-3d@^1.25.1:
   version "1.25.1"
   resolved "https://registry.npmjs.org/react-force-graph-3d/-/react-force-graph-3d-1.25.1.tgz"
   integrity sha512-ET8ByYnUPpZDvkoonZZMDUiFFrqQKiKcl7spYOGwCytuoEFc+5Nk+72v1PgymvvoC6NuFXjEMUWpsEszusqCnA==
@@ -6479,7 +6479,7 @@ thenify-all@^1.0.0:
   dependencies:
     any-promise "^1.0.0"
 
-three-forcegraph@1:
+three-forcegraph@^1.42.11, three-forcegraph@1:
   version "1.42.11"
   resolved "https://registry.npmjs.org/three-forcegraph/-/three-forcegraph-1.42.11.tgz"
   integrity sha512-MXESG+qXXzsZDaY1N0M3fW1sfgJinm/DjNwO9oS9XXT1NRK9KoRijYDt5ilzI8M4OdJ3pA4YdaV3nDBw2HPVOw==
@@ -7096,10 +7096,10 @@ yocto-queue@^1.0.0:
   resolved "https://registry.npmjs.org/yocto-queue/-/yocto-queue-1.1.1.tgz"
   integrity sha512-b4JR1PFR10y1mKjhHY9LaGo6tmrgjit7hxVIeAmyMw3jegXR4dhYqLaQF5zMXZxY7tLpMyJeLjr1C4rLmkVe8g==
 
-zod@^3.22.4:
-  version "3.23.8"
-  resolved "https://registry.npmjs.org/zod/-/zod-3.23.8.tgz"
-  integrity sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==
+zod@^3.24.1:
+  version "3.24.1"
+  resolved "https://registry.npmjs.org/zod/-/zod-3.24.1.tgz"
+  integrity sha512-muH7gBL9sI1nciMZV67X5fTKKBLtwpZ5VBp1vsOQzj1MhrBZ4wlVCm3gedKZWLp0Oyel8sIGfeiz54Su+OVT+A==
 
 zustand@^3.7.1:
   version "3.7.2"
