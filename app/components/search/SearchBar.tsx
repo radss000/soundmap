@@ -1,7 +1,6 @@
-// app/components/search/SearchBar.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { trpc } from '@/lib/trpc/client';
 import { Search, Loader2 } from 'lucide-react';
@@ -24,10 +23,10 @@ import { useGraphStore } from '@/lib/store/graphStore';
 export function SearchBar() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const debouncedValue = useDebounce(value, 300);
   const { setNodes, setLinks } = useGraphStore();
 
-  // Utiliser la mutation TRPC pour la recherche
   const searchQuery = trpc.artist.search.useQuery(
     { 
       query: debouncedValue,
@@ -37,20 +36,18 @@ export function SearchBar() {
     {
       enabled: debouncedValue.length > 0,
       onSuccess: (data) => {
-        console.log('Search results:', data); // Pour débugger
+        console.log('Search results:', data);
       },
       onError: (error) => {
         console.error('Search error:', error);
+        setSearchError(error.message);
       }
     }
   );
 
-  // Gérer la sélection d'un artiste
-  const handleSelect = useCallback(async (artistId: string) => {
+  const handleSelect = async (artistId: string) => {
     console.log('Selected artist:', artistId);
     try {
-      // On va temporairement créer des données de test
-      // jusqu'à ce que getGraph soit implémenté
       setNodes([
         {
           id: artistId,
@@ -65,7 +62,7 @@ export function SearchBar() {
     } catch (error) {
       console.error('Error selecting artist:', error);
     }
-  }, [setNodes, setLinks]);
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
