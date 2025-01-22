@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,59 +8,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Artist {
-  id            String    @id @default(cuid())
-  name          String
-  bio           String?
-  imageUrl      String?
-  location      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  releases      Release[]
-  collaborators ArtistCollaboration[]
-  remixes       Remix[]
-}
-
-model Label {
-  id        String    @id @default(cuid())
-  name      String
-  bio       String?
-  imageUrl  String?
-  location  String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  releases  Release[]
-}
-
 model Release {
-  id        String   @id @default(cuid())
+  id          String      @id @default(cuid())
+  title       String
+  year        Int
+  country     String?
+  artistNames String[]
+  labelName   String?
+  labelCatno  String?
+  genres      String[]
+  styles      String[]
+  imageUrl    String?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  tracks      Track[]
+
+  @@map("electronic_releases_2008")
+}
+
+model Track {
+  id        String      @id @default(cuid())
+  position  String?
   title     String
-  year      Int
-  imageUrl  String?
-  genres    String[]
-  artistId  String
-  labelId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  artist    Artist   @relation(fields: [artistId], references: [id])
-  label     Label    @relation(fields: [labelId], references: [id])
-  remixes   Remix[]
-}
+  duration  String?
+  artists   String[]
+  releaseId String
+  release   Release2008 @relation(fields: [releaseId], references: [id])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
-model ArtistCollaboration {
-  id            String   @id @default(cuid())
-  artistId      String
-  collaboratorId String
-  createdAt     DateTime @default(now())
-  artist        Artist   @relation(fields: [artistId], references: [id])
-}
-
-model Remix {
-  id           String   @id @default(cuid())
-  originalId   String
-  remixerId    String
-  releaseDate  DateTime
-  createdAt    DateTime @default(now())
-  original     Release  @relation(fields: [originalId], references: [id])
-  remixer      Artist   @relation(fields: [remixerId], references: [id])
+  @@map("tracks")
 }
