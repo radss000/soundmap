@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,8 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Release {
-  id          String      @id @default(cuid())
+model ElectronicRelease {
+  id          String   @id @default(cuid())
   title       String
   year        Int
   country     String?
@@ -20,23 +19,23 @@ model Release {
   styles      String[]
   imageUrl    String?
   notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   tracks      Track[]
 
   @@map("electronic_releases_2008")
 }
 
 model Track {
-  id        String      @id @default(cuid())
+  id        String            @id @default(cuid())
   position  String?
   title     String
   duration  String?
   artists   String[]
   releaseId String
-  release   Release2008 @relation(fields: [releaseId], references: [id])
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  release   ElectronicRelease @relation(fields: [releaseId], references: [id])
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
   @@map("tracks")
 }

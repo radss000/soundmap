@@ -1,7 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Readable } from 'stream';
 
 const prisma = new PrismaClient();
 
@@ -14,14 +13,11 @@ async function importReleases() {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    // Create a readable stream to process the file in chunks
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     let buffer = '';
 
     stream.on('data', async (chunk) => {
       buffer += chunk;
-
-      // Split the buffer into individual JSON objects
       const releases = buffer.split('\n').filter((line) => line.trim() !== '');
 
       for (const release of releases) {
@@ -29,8 +25,7 @@ async function importReleases() {
           const releaseData = JSON.parse(release);
           console.log('Importing release:', releaseData.title);
 
-          // Create the Release2008 record
-          const createdRelease = await prisma.release2008.create({
+          const createdRelease = await prisma.electronicRelease.create({
             data: {
               title: releaseData.title,
               year: releaseData.year,
