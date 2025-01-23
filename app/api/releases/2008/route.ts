@@ -1,10 +1,12 @@
-// app/api/releases/route.ts
+// app/api/releases/2008/route.ts
 import { prisma } from '@/server/db';
-import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
     const releases = await prisma.electronicRelease.findMany({
+      where: {
+        year: 2008
+      },
       select: {
         id: true,
         title: true,
@@ -13,15 +15,12 @@ export async function GET() {
         labelName: true,
         genres: true,
         styles: true
-      },
-      take: 1000 // Limite pour des performances optimales
+      }
     });
     
-    return NextResponse.json(releases);
+    return Response.json(releases);
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to fetch releases' }, 
-      { status: 500 }
-    );
+    console.error('Failed to fetch releases:', error);
+    return Response.json({ error: 'Failed to fetch releases' }, { status: 500 });
   }
 }
