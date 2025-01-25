@@ -130,9 +130,11 @@ const BubbleVisualization = () => {
      return true;
    });
 
-   const filteredLinks = rawData.links.filter(link => 
-     filteredNodes.find(n => n.id === link.source || n.id === link.target)
-   );
+   const filteredLinks = rawData.links.filter(link => {
+    const source = typeof link.source === 'object' ? link.source.id : link.source;
+    const target = typeof link.target === 'object' ? link.target.id : link.target;
+    return filteredNodes.find(n => n.id === source || n.id === target);
+  });
 
    setGraphData({ nodes: filteredNodes, links: filteredLinks });
  }, [filters, rawData]);
@@ -155,10 +157,11 @@ const BubbleVisualization = () => {
            </Button>
          </DropdownMenuTrigger>
          <DropdownMenuContent align="start" className="w-56">
-           <Select
-             value={filters.label || ''}
-             onValueChange={(value) => setFilters(prev => ({ ...prev, label: value || null }))}
-           >
+         <select
+          value={filters.label || ''}
+          onChange={(e) => setFilters(prev => ({ ...prev, label: e.target.value || null }))}
+          className="w-full p-2 rounded bg-background text-foreground"
+        >
              <option value="">All Labels</option>
              {uniqueLabels.map(label => (
                <option key={label} value={label}>{label}</option>

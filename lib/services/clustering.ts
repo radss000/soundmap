@@ -1,39 +1,55 @@
+// lib/services/clustering.ts
 import { ElectronicRelease } from '@prisma/client';
 import _ from 'lodash';
 
-interface Cluster {
+interface ProcessedNode {
   id: string;
-  name: string;
-  type: 'cluster';
-  size: number;
-  style: string;
+  type: 'release' | 'cluster';
+  data: any;
+  position: [number, number, number];
 }
 
-export function clusterReleases(releases: Partial<ElectronicRelease>[]) {
-  // Group by primary style
-  const styleGroups = _.groupBy(releases, release => release.styles?.[0] || 'Unknown');
+export function processReleaseData(releases: ElectronicRelease[]) {
+  // Grouper par style principal
+  const styleGroups = _.groupBy(releases, r => r.styles[0] || 'Unknown');
   
-  const clusters: Cluster[] = Object.entries(styleGroups).map(([style, releases]) => ({
-    id: style,
-    name: style,
+  // Créer les clusters
+  const clusters = Object.entries(styleGroups).map(([style, items]) => ({
+    id: `cluster-${style}`,
     type: 'cluster',
-    size: releases.length,
-    style
+    data: {
+      name: style,
+      count: items.length,
+      style
+    }
   }));
 
-  // Create links between related styles
+  // Traiter les releases individuelles
+  const nodes = releases.map(release => ({
+    id: release.id,
+    type: 'release',
+    data: {
+      title: release.title,
+      artists: release.artistNames,
+      label: release.labelName,
+      style: release.styles[0]
+    }
+  }));
+
+  // Créer les liens
   const links = [];
   releases.forEach(release => {
-    if (release.styles && release.styles.length > 1) {
-      for (let i = 0; i < release.styles.length - 1; i++) {
-        links.push({
-          source: release.styles[i],
-          target: release.styles[i + 1],
-          value: 1
-        });
-      }
+    if (release.styles[0]) {
+      links.push({
+        source: release.id,
+        target: `cluster-${release.styles[0]}`,
+        type: 'style'
+      });
     }
   });
 
-  return { clusters, links };
+  return {
+    nodes: [...clusters, ...nodes],
+    links
+  };
 }

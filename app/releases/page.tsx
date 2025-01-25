@@ -1,26 +1,42 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Suspense } from 'react';
 import { Card } from '@/components/ui/card';
+import { processReleaseData } from '@/lib/services/clustering';
 
-// Import BubbleVisualization dynamically to avoid SSR issues
-const BubbleVisualization = dynamic(
-  () => import('@/app/components/graph/BubbleVisualization'),
-  { 
-    ssr: false,
-    loading: () => (
-      <Card className="w-full h-screen flex items-center justify-center bg-gradient-to-b from-black to-gray-900 text-white">
-        <p className="text-lg">Loading visualization...</p>
-      </Card>
-    )
-  }
+const OptimizedGraph = dynamic(
+  () => import('@/app/components/graph/OptimizedGraph'),
+  { ssr: false }
 );
 
 export default function ReleasesPage() {
-  return (
-    <Suspense>
-      <BubbleVisualization />
-    </Suspense>
-  );
+  const [graphData, setGraphData] = useState(null);
+
+  useEffect(() => {
+    async function fetchReleases() {
+      try {
+        const response = await fetch('/api/releases/2008');
+        const releases = await response.json();
+        
+        // Transformer les données pour le graphe
+        const processedData = processReleaseData(releases);
+        setGraphData(processedData);
+      } catch (error) {
+        console.error('Error fetching releases:', error);
+      }
+    }
+
+    fetchReleases();
+  }, []);
+
+  if (!graphData) {
+    return (
+      <Card className="w-full h-screen flex items-center justify-center">
+        <p className="text-lg">Loading releases...</p>
+      </Card>
+    );
+  }
+
+  return <OptimizedGraph data={graphData} initialFocus="electronic" />;
 }
