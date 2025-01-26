@@ -6,10 +6,7 @@ const GraphVisualization = dynamic(
   { ssr: false }
 );
 
-export default function ExplorePage() {
-  return (
-    <div className="relative h-screen w-full overflow-hidden bg-background">
-      <GraphVisualization />
-    </div>
-  );
+export default function ReleasesPage() {
+  return <GraphVisualization />;
 }
+
