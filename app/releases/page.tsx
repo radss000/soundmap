@@ -1,11 +1,14 @@
-'use client';
 import dynamic from 'next/dynamic';
 
-const EnhancedGraph = dynamic(
-  () => import('@/app/components/graph/BubbleVisualization'),
+const GraphVisualization = dynamic(
+  () => import('../../components/graph/GraphVisualization'),
   { ssr: false }
 );
 
-export default function ReleasesPage() {
-  return <EnhancedGraph />;
+export default function ExplorePage() {
+  return (
+    <div className="relative h-screen w-full overflow-hidden bg-background">
+      <GraphVisualization />
+    </div>
+  );
 }
