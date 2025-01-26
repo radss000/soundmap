@@ -1,35 +1,76 @@
 // lib/services/graphTransformer.ts
 import { GraphNode, GraphLink } from '../types/graph';
-import { DiscogsArtist, DiscogsRelease } from '../types/discogs';
 
-export class GraphTransformer {
-  static artistToNode(artist: DiscogsArtist): GraphNode {
-    return {
-      id: artist.id.toString(),
-      name: artist.name,
-      type: 'artist',
-      color: 'rgb(255, 64, 129)',
-      size: 20,
-      imageUrl: artist.images?.[0]?.uri150,
-    };
-  }
+const NODE_COLORS = {
+  artist: '#FF4081',
+  label: '#00BCD4',
+  release: '#4CAF50'
+};
 
-  static releaseToNode(release: DiscogsRelease): GraphNode {
-    return {
-      id: release.id.toString(),
+export function processReleases(releases: any[]) {
+  const nodes = new Map<string, GraphNode>();
+  const links = new Map<string, GraphLink>();
+  const artistsMap = new Map();
+  const labelsMap = new Map();
+
+  releases.forEach(release => {
+    // Add release node
+    nodes.set(release.id, {
+      id: release.id,
       name: release.title,
       type: 'release',
-      color: 'rgb(76, 175, 80)',
-      size: 15,
-      imageUrl: release.thumb,
-    };
-  }
+      color: NODE_COLORS.release,
+      data: release
+    });
 
-  static createArtistReleaseLink(artistId: string, releaseId: string): GraphLink {
-    return {
-      source: artistId,
-      target: releaseId,
-      type: 'release',
-    };
-  }
+    // Process artists
+    release.artistNames.forEach(artistName => {
+      const artistId = `artist-${artistName}`;
+      if (!artistsMap.has(artistId)) {
+        artistsMap.set(artistId, {
+          id: artistId,
+          name: artistName,
+          type: 'artist',
+          color: NODE_COLORS.artist,
+          releaseCount: 1
+        });
+      } else {
+        artistsMap.get(artistId).releaseCount++;
+      }
+
+      const linkId = `${release.id}-${artistId}`;
+      links.set(linkId, {
+        source: release.id,
+        target: artistId,
+        type: 'artist_release'
+      });
+    });
+
+    // Process label
+    if (release.labelName) {
+      const labelId = `label-${release.labelName}`;
+      if (!labelsMap.has(labelId)) {
+        labelsMap.set(labelId, {
+          id: labelId,
+          name: release.labelName,
+          type: 'label',
+          color: NODE_COLORS.label,
+          releaseCount: 1
+        });
+      } else {
+        labelsMap.get(labelId).releaseCount++;
+      }
+
+      links.set(`${release.id}-${labelId}`, {
+        source: release.id,
+        target: labelId,
+        type: 'label_release'
+      });
+    }
+  });
+
+  return {
+    nodes: [...nodes.values(), ...artistsMap.values(), ...labelsMap.values()],
+    links: [...links.values()]
+  };
 }
