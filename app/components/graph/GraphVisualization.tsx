@@ -11,8 +11,9 @@ import { Home, ZoomIn, ZoomOut, Search } from 'lucide-react';
 import { debounce } from 'lodash';
 
 const ForceGraph = dynamic(() => import('./ForceGraph'), { ssr: false });
-const worker = new Worker(new URL('./graphWorker.js', import.meta.url), { type: 'module' });
-
+const worker = new Worker(new URL('./graphWorker.js', import.meta.url), {
+  type: 'module' 
+});
 const NODE_TYPES = {
  RELEASE: 'release',
  ARTIST: 'artist',
@@ -68,27 +69,26 @@ export default function GraphVisualization() {
  }, [loadedNodes]);
 
  useEffect(() => {
-   const fetchData = async () => {
-     try {
-       const response = await fetch('/api/releases/2008');
-       const releases = await response.json();
-       setRawData(releases);
+  const fetchData = async () => {
+    try {
+      const response = await fetch('/api/releases/2008');
+      const releases = await response.json();
+      setRawData(releases);
+      
+      worker.postMessage({
+        type: 'INIT',
+        data: releases.slice(0, BATCH_SIZE)
+      });
+      setCurrentChunk(1);
+      setLoading(false);
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+  };
 
-       worker.postMessage({
-         type: 'INIT',
-         data: releases.slice(0, BATCH_SIZE)
-       });
-
-       setCurrentChunk(1);
-       setLoading(false);
-     } catch (error) {
-       console.error(error);
-       setLoading(false);
-     }
-   };
-
-   fetchData();
- }, []);
+  fetchData();
+}, []);
 
  // Node rendering
  const nodeThreeObject = useCallback((node) => {

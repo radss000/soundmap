@@ -6,10 +6,12 @@ import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 
 interface ForceGraphProps {
- graphData: {
-   nodes: any[];
-   links: any[];
- };
+ ggraphData: {
+    nodes: any[];
+    links: any[];
+  };
+  width?: number;
+  height?: number;
  ref?: React.ForwardedRef<any>;
  onNodeClick?: (node: any) => void;
  onCameraPositionChange?: (pos: any) => void;
