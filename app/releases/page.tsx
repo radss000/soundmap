@@ -1,7 +1,8 @@
+'use client';
 import dynamic from 'next/dynamic';
 
 const GraphVisualization = dynamic(
-  () => import('../../components/graph/GraphVisualization'),
+  () => import('@/app/components/graph/GraphVisualization'),
   { ssr: false }
 );
 
