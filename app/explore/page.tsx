@@ -7,7 +7,7 @@ import { FilterPanel } from '@/components/search/FilterPanel';
 import { Card } from '@/components/ui/card';
 
 const GraphVisualization = dynamic(
-  () => import('@/components/graph/GraphVisualization'),
+  () => import('@/app/components/graph/GraphVisualization'),
   { 
     ssr: false,
     loading: () => (

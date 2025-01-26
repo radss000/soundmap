@@ -1,159 +1,265 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+'use client';
+
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import * as THREE from 'three';
-import * as d3 from 'd3';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Home, ZoomIn, ZoomOut, Search } from 'lucide-react';
-import _ from 'lodash';
+import { debounce } from 'lodash';
 
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
+// Worker for heavy computations
+const worker = new Worker(new URL('./graphWorker.ts', import.meta.url));
 
-const NODE_LIMIT = 10000; // Augmenté pour plus de releases
-const PARTICLES_PER_LINE = 4;
+const ForceGraph = dynamic(() => 
+  import('react-force-graph-3d').then(mod => {
+    const ForceGraphComponent = React.forwardRef((props, ref) => 
+      <mod.default {...props} ref={ref} />
+    );
+    ForceGraphComponent.displayName = 'ForceGraph';
+    return ForceGraphComponent;
+  }), { ssr: false }
+);
+
+const NODE_TYPES = {
+  RELEASE: 'release',
+  ARTIST: 'artist',
+  LABEL: 'label'
+};
 
 const NODE_COLORS = {
-  cluster: {
-    House: '#FF1493',
-    Techno: '#4169E1', 
-    'Deep House': '#32CD32',
-    Ambient: '#9370DB',
-    Trance: '#FF4500',
-    default: '#1E90FF'
-  },
-  release: '#4682B4',
+  release: '#4CAF50',
+  artist: '#2196F3',
+  label: '#FF4081',
   selected: '#FFD700'
 };
 
+// Precomputed geometries
+const GEOMETRIES = {
+  release: new THREE.SphereGeometry(3, 16, 16),
+  artist: new THREE.SphereGeometry(5, 24, 24),
+  label: new THREE.SphereGeometry(4, 20, 20)
+};
+
+const BATCH_SIZE = 1000;
+const VISIBLE_RADIUS = 100;
+
 const GraphVisualization = () => {
   const graphRef = useRef();
-  const [data, setData] = useState({ nodes: [], links: [] });
+  const [graphState, setGraphState] = useState({
+    visibleNodes: new Set(),
+    cachedNodes: new Map(),
+    links: new Map(),
+    center: { x: 0, y: 0, z: 0 }
+  });
   const [selectedNode, setSelectedNode] = useState(null);
-  const [hoveredNode, setHoveredNode] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [originalData, setOriginalData] = useState({ nodes: [], links: [] });
+  const [loading, setLoading] = useState(true);
+  const [rawData, setRawData] = useState(null);
 
-  const processLinks = useMemo(() => (releases, nodes) => {
-    const links = [];
-    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const materialsCache = useMemo(() => {
+    return Object.entries(NODE_COLORS).reduce((cache, [type, color]) => {
+      cache[type] = new THREE.MeshPhongMaterial({
+        color,
+        transparent: true,
+        opacity: 0.8,
+        shininess: 50
+      });
+      return cache;
+    }, {});
+  }, []);
 
-    // Links to style clusters
-    releases.slice(0, NODE_LIMIT).forEach(release => {
-      const style = release.styles?.[0];
-      if (style) {
-        links.push({
+  useEffect(() => {
+    worker.onmessage = (e) => {
+      const { nodes, links } = e.data;
+      console.log('Worker returned nodes and links:', { nodes, links }); // Log worker response
+      setGraphState(prev => ({
+        ...prev,
+        visibleNodes: new Set([...prev.visibleNodes, ...nodes.map(n => n.id)]),
+        cachedNodes: new Map([...prev.cachedNodes, ...nodes.map(n => [n.id, n])]),
+        links: new Map([...prev.links, ...links.map(l => [`${l.source}-${l.target}`, l])])
+      }));
+    };
+  
+    return () => worker.terminate();
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/releases/2008');
+        const releases = await response.json();
+        console.log('Fetched Releases:', releases); // Log fetched data
+        setRawData(releases);
+  
+        // Send INIT message to worker
+        worker.postMessage({ 
+          type: 'INIT',
+          data: releases.slice(0, BATCH_SIZE),
+          radius: VISIBLE_RADIUS 
+        });
+        setLoading(false);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+  const processReleases = (releases, existingNodes = new Map()) => {
+    const nodes = new Map(existingNodes);
+    const links = new Map();
+    const artistsMap = new Map();
+    const labelsMap = new Map();
+  
+    console.log('Processing releases:', releases); // Log releases being processed
+  
+    releases.forEach(release => {
+      if (!nodes.has(release.id)) {
+        nodes.set(release.id, {
+          id: release.id,
+          name: release.title,
+          type: NODE_TYPES.RELEASE,
+          data: release
+        });
+      }
+  
+      release.artistNames.forEach(artistName => {
+        const artistId = `artist-${artistName}`;
+        if (!artistsMap.has(artistId)) {
+          artistsMap.set(artistId, {
+            id: artistId,
+            name: artistName,
+            type: NODE_TYPES.ARTIST,
+            releaseCount: 1
+          });
+        } else {
+          artistsMap.get(artistId).releaseCount++;
+        }
+  
+        const linkId = `${release.id}-${artistId}`;
+        links.set(linkId, {
           source: release.id,
-          target: `cluster-${style}`,
-          value: 1
+          target: artistId,
+          type: 'artist_release'
+        });
+      });
+  
+      if (release.labelName) {
+        const labelId = `label-${release.labelName}`;
+        if (!labelsMap.has(labelId)) {
+          labelsMap.set(labelId, {
+            id: labelId,
+            name: release.labelName,
+            type: NODE_TYPES.LABEL,
+            releaseCount: 1
+          });
+        } else {
+          labelsMap.get(labelId).releaseCount++;
+        }
+  
+        const linkId = `${release.id}-${labelId}`;
+        links.set(linkId, {
+          source: release.id,
+          target: labelId,
+          type: 'label_release'
         });
       }
     });
-
-    // Links between same-label releases
-    for (let i = 0; i < releases.length - 1; i++) {
-      if (links.length >= NODE_LIMIT * 2) break;
-      if (releases[i].labelName === releases[i + 1].labelName) {
-        if (nodeMap.has(releases[i].id) && nodeMap.has(releases[i + 1].id)) {
-          links.push({
-            source: releases[i].id,
-            target: releases[i + 1].id,
-            value: 1
-          });
-        }
-      }
+  
+    for (const artist of artistsMap.values()) {
+      nodes.set(artist.id, artist);
     }
-
-    return links;
-  }, []);
-
-  const processNodes = useMemo(() => (releases) => {
-    const styleGroups = _.groupBy(releases, r => r.styles?.[0] || 'Unknown');
-    
-    const clusters = Object.entries(styleGroups).map(([style, items]) => ({
-      id: `cluster-${style}`,
-      name: style,
-      type: 'cluster',
-      size: Math.sqrt(items.length) * 2,
-      color: NODE_COLORS.cluster[style] || NODE_COLORS.cluster.default,
-      childCount: items.length,
-      data: { type: 'cluster', style, count: items.length }
-    }));
-
-    const nodes = releases.slice(0, NODE_LIMIT).map(release => ({
-      id: release.id,
-      name: release.title,
-      type: 'release',
-      size: 3,
-      color: NODE_COLORS.release,
-      data: release
-    }));
-
-    return [...clusters, ...nodes];
-  }, []);
-
-  const filterNodes = useCallback((nodes, term) => {
-    if (!term) return nodes;
-    const lowerTerm = term.toLowerCase();
-    return nodes.filter(node => 
-      node.name.toLowerCase().includes(lowerTerm) ||
-      node.data?.artistNames?.some(artist => artist.toLowerCase().includes(lowerTerm)) ||
-      node.data?.labelName?.toLowerCase().includes(lowerTerm)
-    );
-  }, []);
-
-  const fetchData = async () => {
-    const response = await fetch('/api/releases/2008');
-    const releases = await response.json();
-    const nodes = processNodes(releases);
-    const links = processLinks(releases, nodes);
-    setOriginalData({ nodes, links });
-    setData({ nodes, links });
+    for (const label of labelsMap.values()) {
+      nodes.set(label.id, label);
+    }
+  
+    console.log('Processed nodes and links:', { nodes, links }); // Log processed nodes and links
+    return { nodes, links };
   };
-
-  useEffect(() => {
-    
-    if (searchTerm) {
-      const filteredNodes = filterNodes(originalData.nodes, searchTerm);
-      const nodeIds = new Set(filteredNodes.map(n => n.id));
-      const filteredLinks = originalData.links.filter(l => 
-        nodeIds.has(l.source.id || l.source) && nodeIds.has(l.target.id || l.target)
-      );
-      setData({ nodes: filteredNodes, links: filteredLinks });
-    } else {
-      setData(originalData);
+  const nodeThreeObject = useCallback((node) => {
+    if (!graphState.visibleNodes.has(node.id)) {
+      console.log('Node not visible:', node.id); // Log invisible nodes
+      return null;
     }
-  }, [searchTerm, originalData, filterNodes, processLinks, processNodes]);
+
+    const geometry = GEOMETRIES[node.type];
+    const material = materialsCache[selectedNode?.id === node.id ? 'selected' : node.type].clone();
+    console.log('Creating 3D object for node:', node.id); // Log node 3D object creation
+    return new THREE.Mesh(geometry, material);
+  }, [graphState.visibleNodes, selectedNode, materialsCache]);
+
+  const handleCameraMove = useCallback(debounce((position) => {
+    const { x, y, z } = position;
+    console.log('Camera moved to:', { x, y, z }); // Log camera movement
+    worker.postMessage({
+      type: 'UPDATE_VISIBLE',
+      center: { x, y, z },
+      radius: VISIBLE_RADIUS
+    });
+  }, 100), []);
 
   const handleNodeClick = useCallback((node) => {
-    if (!node || !graphRef.current) return;
+    if (!node) return;
 
-    // Zoom sur le nœud
     const distance = 50;
     const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
-    graphRef.current.cameraPosition(
-      { 
-        x: node.x * distRatio, 
-        y: node.y * distRatio, 
-        z: node.z * distRatio 
-      },
+    
+    graphRef.current?.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
       node,
       2000
     );
 
-    // Highlight du nœud sélectionné
-    setData(prevData => ({
-      ...prevData,
-      nodes: prevData.nodes.map(n => ({
-        ...n,
-        color: n.id === node.id ? NODE_COLORS.selected : 
-               n.type === 'cluster' ? NODE_COLORS.cluster[n.name] || NODE_COLORS.cluster.default :
-               NODE_COLORS.release
-      }))
-    }));
-
     setSelectedNode(node);
+    console.log('Node clicked:', node.id); // Log node click
+
+    // Load connected nodes
+    worker.postMessage({
+      type: 'LOAD_CONNECTED',
+      nodeId: node.id,
+      radius: 50
+    });
   }, []);
+
+  const handleSearch = useCallback(debounce((term) => {
+    if (!term || !rawData) {
+      console.log('Resetting search'); // Log search reset
+      worker.postMessage({ 
+        type: 'RESET',
+        data: rawData?.slice(0, BATCH_SIZE)
+      });
+      return;
+    }
+
+    console.log('Searching for term:', term); // Log search term
+    worker.postMessage({
+      type: 'SEARCH',
+      term,
+      data: rawData
+    });
+  }, 300), [rawData]);
+
+  const graphData = useMemo(() => {
+    const nodes = Array.from(graphState.cachedNodes.values())
+      .filter(node => graphState.visibleNodes.has(node.id));
+    const links = Array.from(graphState.links.values())
+      .filter(link => 
+        graphState.visibleNodes.has(link.source) && 
+        graphState.visibleNodes.has(link.target)
+      );
+
+    console.log('Graph Data:', { nodes, links }); // Log graph data
+    return { nodes, links };
+  }, [graphState]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center text-white">
+        Loading visualization...
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen bg-black">
@@ -167,7 +273,12 @@ const GraphVisualization = () => {
                 { x: 0, y: 0, z: 0 },
                 2000
               );
+              worker.postMessage({ 
+                type: 'RESET',
+                data: rawData?.slice(0, BATCH_SIZE)
+              });
               setSelectedNode(null);
+              console.log('View reset'); // Log view reset
             }}
             className="bg-black/50 text-white hover:bg-black/70">
             <Home className="w-4 h-4 mr-2" />
@@ -176,14 +287,15 @@ const GraphVisualization = () => {
           
           <div className="flex gap-2">
             <Button 
-              variant="outline" 
+              variant="outline"
               onClick={() => {
-                const { x, y, z } = graphRef.current.cameraPosition();
+                const {x, y, z} = graphRef.current.cameraPosition();
                 graphRef.current.cameraPosition(
-                  { x: x * 0.8, y: y * 0.8, z: z * 0.8 },
-                  { x: 0, y: 0, z: 0 },
+                  {x: x * 0.8, y: y * 0.8, z: z * 0.8},
+                  {x: 0, y: 0, z: 0},
                   1000
                 );
+                console.log('Zoomed in'); // Log zoom in
               }}
               className="bg-black/50 text-white hover:bg-black/70">
               <ZoomIn className="w-4 h-4" />
@@ -191,12 +303,13 @@ const GraphVisualization = () => {
             <Button 
               variant="outline"
               onClick={() => {
-                const { x, y, z } = graphRef.current.cameraPosition();
+                const {x, y, z} = graphRef.current.cameraPosition();
                 graphRef.current.cameraPosition(
-                  { x: x * 1.2, y: y * 1.2, z: z * 1.2 },
-                  { x: 0, y: 0, z: 0 },
+                  {x: x * 1.2, y: y * 1.2, z: z * 1.2},
+                  {x: 0, y: 0, z: 0},
                   1000
                 );
+                console.log('Zoomed out'); // Log zoom out
               }}
               className="bg-black/50 text-white hover:bg-black/70">
               <ZoomOut className="w-4 h-4" />
@@ -208,66 +321,65 @@ const GraphVisualization = () => {
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search releases, artists, labels..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
             className="pl-8 bg-black/50 text-white border-white/20 w-64"
           />
         </div>
       </div>
 
-      <ForceGraph3D
+      <ForceGraph
         ref={graphRef}
-        graphData={data}
+        graphData={graphData}
         nodeLabel="name"
         backgroundColor="#000000"
-        nodeRelSize={node => node.type === 'cluster' ? 8 : 4}
-        nodeResolution={16}
-        linkDirectionalParticles={PARTICLES_PER_LINE}
-        linkDirectionalParticleSpeed={0.005}
-        linkWidth={0.5}
-        linkOpacity={0.2}
+        nodeThreeObject={nodeThreeObject}
+        linkWidth={1}
+        linkOpacity={0.3}
+        linkColor={() => '#ffffff'}
         onNodeClick={handleNodeClick}
-        onNodeHover={setHoveredNode}
-        nodeThreeObject={node => {
-          const geometry = new THREE.SphereGeometry(node.size);
-          const material = new THREE.MeshPhongMaterial({
-            color: node.color,
-            transparent: true,
-            opacity: hoveredNode === node ? 1 : 0.75,
-            shininess: 100
-          });
-          return new THREE.Mesh(geometry, material);
-        }}
-        d3AlphaDecay={0.02}
+        onCameraPositionChange={handleCameraMove}
         d3VelocityDecay={0.3}
-        warmupTicks={100}
-        cooldownTicks={50}
-        cooldownTime={2000}
+        cooldownTicks={100}
+        onEngineTick={() => {
+          const pos = graphRef.current?.camera().position;
+          if (pos) handleCameraMove(pos);
+        }}
       />
 
       {selectedNode && (
         <Card className="absolute top-4 right-4 p-4 w-96 bg-black/80 backdrop-blur-sm text-white border-white/20">
           <h3 className="text-xl font-bold mb-2">{selectedNode.name}</h3>
           <div className="space-y-2">
-            {selectedNode.type === 'cluster' ? (
+            {selectedNode.type === NODE_TYPES.RELEASE ? (
               <>
-                <p>Type: Style Cluster</p>
-                <p>Releases: {selectedNode.childCount}</p>
+                <p>Artists: {selectedNode.data.artistNames.join(', ')}</p>
+                {selectedNode.data.labelName && <p>Label: {selectedNode.data.labelName}</p>}
+                <p>Styles: {selectedNode.data.styles.join(', ')}</p>
+                <p>Year: {selectedNode.data.year}</p>
+                {selectedNode.data.tracks?.length > 0 && (
+                  <div className="mt-4">
+                    <p className="font-semibold mb-2">Tracklist:</p>
+                    <div className="max-h-60 overflow-y-auto">
+                      {selectedNode.data.tracks.map((track, idx) => (
+                        <div key={idx} className="py-1">
+                          {track.position && <span className="text-gray-400 mr-2">{track.position}</span>}
+                          <span>{track.title}</span>
+                          {track.duration && <span className="text-gray-400 ml-2">({track.duration})</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : selectedNode.type === NODE_TYPES.ARTIST ? (
+              <>
+                <p>Artist</p>
+                <p>Releases: {selectedNode.releaseCount}</p>
               </>
             ) : (
               <>
-                {selectedNode.data?.artistNames && (
-                  <p>Artists: {selectedNode.data.artistNames.join(', ')}</p>
-                )}
-                {selectedNode.data?.labelName && (
-                  <p>Label: {selectedNode.data.labelName}</p>
-                )}
-                {selectedNode.data?.year && (
-                  <p>Year: {selectedNode.data.year}</p>
-                )}
-                {selectedNode.data?.styles && (
-                  <p>Styles: {selectedNode.data.styles.join(', ')}</p>
-                )}
+                <p>Label</p>
+                <p>Releases: {selectedNode.releaseCount}</p>
               </>
             )}
           </div>
