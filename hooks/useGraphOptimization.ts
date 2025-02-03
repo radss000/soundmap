@@ -1,45 +1,21 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { GraphNode, GraphLink } from '@/lib/types/graph';
 import { debounce } from 'lodash';
 
 const VISIBLE_RADIUS = 100;
-const CHUNK_SIZE = 1000;
 
-export function useGraphOptimization(worker: Worker | undefined) {
+export function useGraphOptimization(workerRef: React.MutableRefObject<Worker | undefined>) {
   const [optimizedNodes, setOptimizedNodes] = useState<GraphNode[]>([]);
   const [optimizedLinks, setOptimizedLinks] = useState<GraphLink[]>([]);
   const [clusterData, setClusterData] = useState<any[]>([]);
-  const [loadedNodes] = useState(new Set<string>());
-
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    if (!worker) return;
-    
-    worker.postMessage({
-      type: node.type === 'cluster' ? 'EXPAND_CLUSTER' : 'LOAD_NODE_DETAILS',
-      nodeId: node.id
-    });
-  }, [worker]);
-
-  const handleCameraMove = useCallback(
-    debounce((position: { x: number; y: number; z: number }) => {
-      if (!worker) return;
-
-      worker.postMessage({
-        type: 'UPDATE_VISIBLE',
-        position,
-        radius: VISIBLE_RADIUS
-      });
-    }, 100),
-    [worker]
-  );
 
   useEffect(() => {
-    if (!worker) return;
+    if (!workerRef.current) return;
 
     const handleMessage = (event: MessageEvent) => {
       const { type, data } = event.data;
-      
       switch (type) {
+        case 'NODES_PROCESSED':
         case 'NODES_UPDATED':
           setOptimizedNodes(data.nodes);
           setOptimizedLinks(data.links);
@@ -50,9 +26,37 @@ export function useGraphOptimization(worker: Worker | undefined) {
       }
     };
 
-    worker.addEventListener('message', handleMessage);
-    return () => worker.removeEventListener('message', handleMessage);
-  }, [worker]);
+    // Using onmessage instead of addEventListener
+    workerRef.current.onmessage = handleMessage;
+
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.onmessage = null;
+      }
+    };
+  }, [workerRef]);
+
+  const handleNodeClick = useCallback((node: GraphNode) => {
+    if (!workerRef.current) return;
+    
+    workerRef.current.postMessage({
+      type: node.type === 'cluster' ? 'EXPAND_CLUSTER' : 'LOAD_NODE_DETAILS',
+      nodeId: node.id
+    });
+  }, []);
+
+  const handleCameraMove = useCallback(
+    debounce((position: { x: number; y: number; z: number }) => {
+      if (!workerRef.current) return;
+
+      workerRef.current.postMessage({
+        type: 'UPDATE_VISIBLE',
+        position,
+        radius: VISIBLE_RADIUS
+      });
+    }, 100),
+    []
+  );
 
   return {
     optimizedNodes,
