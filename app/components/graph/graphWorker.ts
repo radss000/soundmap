@@ -1,188 +1,196 @@
-/* eslint-disable no-restricted-globals */
-// Necessary for worker context
+'use client';
 
-type Node = {
-  id: string;
-  name: string;
-  type: string;
-  data?: any;
-  position?: [number, number, number];
+import { useEffect, useRef, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import { Card } from '@/components/ui/card';
+import * as THREE from 'three';
+
+const NODE_COLORS = {
+  release: '#4CAF50',
+  artist: '#FF4081',
+  label: '#00BCD4',
+  cluster: '#FFC107'
 };
 
-type Link = {
-  source: string;
-  target: string;
-  type: string;
+const VISIBLE_RADIUS = 100;
+const BATCH_SIZE = 1000;
+
+const ForceGraph = dynamic(
+  () => import('./ForceGraph'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-screen items-center justify-center">
+        <Card className="p-6 bg-black/80 text-white">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-8 w-8 border-4 border-t-blue-500 rounded-full animate-spin"/>
+            <p>Loading graph engine...</p>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+);
+
+type Props = {
+  searchTerm?: string;
+  selectedStyles?: string[];
 };
 
-class GraphProcessor {
-  private nodes = new Map<string, Node>();
-  private links = new Map<string, Link>();
-  private clusters = new Map<string, Node[]>();
-  private visibleNodes = new Set<string>();
+export default function GraphVisualization({
+  searchTerm = '',
+  selectedStyles = []
+}: Props) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<{ nodes: any[]; links: any[]; }>({ nodes: [], links: [] });
+  const [selectedNode, setSelectedNode] = useState<any | null>(null);
+  const workerRef = useRef<Worker>();
 
-  private createNode(data: any): Node {
-    return {
-      id: data.id,
-      name: data.title || data.name,
-      type: 'release',
-      data: {
-        artistNames: data.artistNames,
-        labelName: data.labelName,
-        styles: data.styles,
-        year: data.year
-      },
-      position: this.randomPosition()
-    };
-  }
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-  private randomPosition(): [number, number, number] {
-    return [
-      (Math.random() - 0.5) * 1000,
-      (Math.random() - 0.5) * 1000,
-      (Math.random() - 0.5) * 1000
-    ];
-  }
-
-  private createCluster(nodes: Node[], id: string): Node {
-    const centerPos = this.calculateClusterCenter(nodes);
-    return {
-      id: `cluster-${id}`,
-      name: `${id} Cluster`,
-      type: 'cluster',
-      data: {
-        nodes,
-        count: nodes.length,
-        styles: [...new Set(nodes.flatMap(n => n.data?.styles || []))]
-      },
-      position: centerPos
-    };
-  }
-
-  private calculateClusterCenter(nodes: Node[]): [number, number, number] {
-    if (!nodes.length) return [0, 0, 0];
-    const sum = nodes.reduce((acc, node) => {
-      const pos = node.position || [0, 0, 0];
-      return [acc[0] + pos[0], acc[1] + pos[1], acc[2] + pos[2]];
-    }, [0, 0, 0]);
-    return [
-      sum[0] / nodes.length,
-      sum[1] / nodes.length,
-      sum[2] / nodes.length
-    ];
-  }
-
-  processInitialData(releases: any[]) {
-    this.nodes.clear();
-    this.links.clear();
-    this.clusters.clear();
-    this.visibleNodes.clear();
-
-    const BATCH_SIZE = 1000;
-    for (let i = 0; i < releases.length; i += BATCH_SIZE) {
-      const batch = releases.slice(i, i + BATCH_SIZE);
-      this.processBatch(batch);
-    }
-
-    return this.getVisibleGraph();
-  }
-
-  private processBatch(releases: any[]) {
-    const CLUSTER_SIZE = 20;
-    
-    releases.forEach(release => {
-      const node = this.createNode(release);
-      this.nodes.set(node.id, node);
-      
-      if (release.styles?.[0]) {
-        const style = release.styles[0];
-        if (!this.clusters.has(style)) {
-          this.clusters.set(style, []);
-        }
-        this.clusters.get(style)?.push(node);
-      }
-    });
-
-    this.clusters.forEach((nodes, style) => {
-      if (nodes.length >= CLUSTER_SIZE) {
-        const cluster = this.createCluster(nodes, style);
-        this.nodes.set(cluster.id, cluster);
+    const initializeWorker = async () => {
+      try {
+        workerRef.current = new Worker(
+          new URL('./graphWorker.ts', import.meta.url)
+        );
         
-        nodes.forEach(node => {
-          const linkId = `${cluster.id}-${node.id}`;
-          this.links.set(linkId, {
-            source: cluster.id,
-            target: node.id,
-            type: 'cluster'
-          });
+        workerRef.current.onmessage = (event) => {
+          const { type, data: responseData } = event.data;
+          switch (type) {
+            case 'NODES_PROCESSED':
+            case 'NODES_UPDATED':
+              setData(responseData);
+              setLoading(false);
+              break;
+            case 'ERROR':
+              console.error('Worker error:', responseData);
+              setError(responseData);
+              setLoading(false);
+              break;
+          }
+        };
+
+        const response = await fetch('/api/releases/2008');
+        const releases = await response.json();
+
+        workerRef.current.postMessage({
+          type: 'INIT',
+          data: releases
         });
-      }
-    });
-  }
 
-  updateVisibleNodes(center: { x: number; y: number; z: number }, radius: number) {
-    this.visibleNodes.clear();
+      } catch (error) {
+        console.error('Failed to initialize visualization:', error);
+        setError(error instanceof Error ? error.message : 'Failed to initialize');
+        setLoading(false);
+      }
+    };
+
+    initializeWorker();
+
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
+
+  // Effect pour gérer les changements de filtres
+  useEffect(() => {
+    if (!workerRef.current) return;
     
-    this.nodes.forEach((node, id) => {
-      if (!node.position) return;
-      
-      const dx = node.position[0] - center.x;
-      const dy = node.position[1] - center.y;
-      const dz = node.position[2] - center.z;
-      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      
-      if (distance <= radius) {
-        this.visibleNodes.add(id);
+    console.log('Sending filter update:', { searchTerm, selectedStyles });
+    
+    workerRef.current.postMessage({
+      type: 'FILTER',
+      data: {
+        searchTerm: searchTerm || '',
+        selectedStyles: selectedStyles || []
       }
     });
+  }, [searchTerm, selectedStyles]);
 
-    return this.getVisibleGraph();
-  }
+  const handleNodeClick = useCallback((node: any) => {
+    setSelectedNode(node);
 
-  private getVisibleGraph() {
-    const nodes = Array.from(this.visibleNodes)
-      .map(id => this.nodes.get(id))
-      .filter(Boolean);
+    if (!node?.position) return;
+    const distance = 40;
+    const distRatio = 1 + distance/Math.hypot(node.position.x, node.position.y, node.position.z);
+  }, []);
 
-    const links = Array.from(this.links.values())
-      .filter(link => 
-        this.visibleNodes.has(link.source) && 
-        this.visibleNodes.has(link.target)
-      );
+  const handleCameraMove = useCallback((camera: THREE.Camera) => {
+    if (!workerRef.current || !camera) return;
 
-    return { nodes, links };
-  }
-}
-
-const processor = new GraphProcessor();
-
-// Explicitly type the context for the worker
-const ctx: Worker = self as any;
-
-ctx.onmessage = (e: MessageEvent) => {
-  const { type, data } = e.data;
-
-  try {
-    switch (type) {
-      case 'INIT':
-        const processed = processor.processInitialData(data);
-        ctx.postMessage({ type: 'NODES_PROCESSED', data: processed });
-        break;
-
-      case 'UPDATE_VISIBLE':
-        const visible = processor.updateVisibleNodes(data.center, data.radius);
-        ctx.postMessage({ type: 'NODES_UPDATED', data: visible });
-        break;
-
-      default:
-        console.warn('Unknown message type:', type);
-    }
-  } catch (error) {
-    ctx.postMessage({ 
-      type: 'ERROR',
-      data: error instanceof Error ? error.message : 'Unknown error'
+    workerRef.current.postMessage({
+      type: 'UPDATE_VISIBLE',
+      data: {
+        position: camera.position,
+        radius: VISIBLE_RADIUS
+      }
     });
-  }
-};
+  }, []);
 
-export type {} // Nécessaire pour que TypeScript traite ce fichier comme un module
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Card className="p-6 bg-black/80 text-white">
+          <h3 className="text-xl font-bold text-red-500">Error</h3>
+          <p className="mt-2">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Card className="p-6 bg-black/80 text-white">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-8 w-8 border-4 border-t-blue-500 rounded-full animate-spin"/>
+            <p>Initializing visualization...</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-screen w-full bg-black">
+      <ForceGraph
+        data={data}
+        onNodeClick={handleNodeClick}
+        onCameraMove={handleCameraMove}
+        nodeColors={NODE_COLORS}
+      />
+
+      {selectedNode && (
+        <Card className="absolute top-4 right-4 p-4 w-96 bg-black/80 backdrop-blur-sm text-white border-none">
+          <h3 className="text-xl font-bold mb-2">{selectedNode.name}</h3>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-300">Type: {selectedNode.type}</p>
+            {selectedNode.data?.artistNames && (
+              <p className="text-sm text-gray-300">
+                Artists: {selectedNode.data.artistNames.join(', ')}
+              </p>
+            )}
+            {selectedNode.data?.labelName && (
+              <p className="text-sm text-gray-300">
+                Label: {selectedNode.data.labelName}
+              </p>
+            )}
+            {selectedNode.data?.styles && (
+              <p className="text-sm text-gray-300">
+                Styles: {selectedNode.data.styles.join(', ')}
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

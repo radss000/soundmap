@@ -111,7 +111,7 @@ export default function GraphVisualization({
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNode(node);
     if (!workerRef.current) return;
-
+  
     workerRef.current.postMessage({
       type: 'LOAD_NODE_DETAILS',
       nodeId: node.id
