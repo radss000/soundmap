@@ -1,36 +1,66 @@
 'use client';
 
-import { useGraphStore } from '@/lib/store/graphStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function NodeDetails() {
-  const { selectedNode, setSelectedNode } = useGraphStore();
+interface NodeDetailsProps {
+  node: any;
+  onClose: () => void;
+}
 
-  if (!selectedNode) return null;
+export function NodeDetails({ node, onClose }: NodeDetailsProps) {
+  if (!node) return null;
 
   return (
-    <Card className="absolute bottom-4 right-4 w-80 bg-background/80 backdrop-blur-sm">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-xl font-bold">{selectedNode.name}</CardTitle>
+    <Card className="absolute top-4 right-4 w-96 bg-black/80 backdrop-blur-sm text-white border-none p-4">
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="text-xl font-bold">{node.name}</h3>
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setSelectedNode(null)}
+          onClick={onClose}
+          className="text-white hover:bg-white/20"
         >
           <X className="h-4 w-4" />
         </Button>
-      </CardHeader>
-      <CardContent>
-        <Badge className="mb-2">{selectedNode.type}</Badge>
-        <p className="text-sm text-muted-foreground">
-          {selectedNode.type === 'artist' && "Click to view artist's profile and discography"}
-          {selectedNode.type === 'label' && "Click to explore label's releases and artists"}
-          {selectedNode.type === 'release' && "Click to view release details and credits"}
-        </p>
-      </CardContent>
+      </div>
+      
+      <div className="space-y-2">
+        <p className="text-sm text-gray-300">Type: {node.type}</p>
+        
+        {node.data?.artistNames && (
+          <div>
+            <p className="text-sm font-medium text-gray-400">Artists</p>
+            <p className="text-sm text-white">
+              {node.data.artistNames.join(', ')}
+            </p>
+          </div>
+        )}
+        
+        {node.data?.labelName && (
+          <div>
+            <p className="text-sm font-medium text-gray-400">Label</p>
+            <p className="text-sm text-white">{node.data.labelName}</p>
+          </div>
+        )}
+        
+        {node.data?.styles && (
+          <div>
+            <p className="text-sm font-medium text-gray-400">Styles</p>
+            <div className="flex flex-wrap gap-1">
+              {node.data.styles.map((style: string) => (
+                <span
+                  key={style}
+                  className="text-xs bg-white/10 px-2 py-1 rounded-full"
+                >
+                  {style}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }

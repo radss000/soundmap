@@ -3,157 +3,121 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/card';
-import { GraphNode, GraphLink } from '@/lib/types/graph';
 import * as THREE from 'three';
-import { debounce } from 'lodash';
+
+const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
+
+const NODE_COLORS = {
+  release: '#4CAF50',
+  artist: '#FF4081',
+  label: '#00BCD4',
+  cluster: '#FFC107'
+};
 
 const VISIBLE_RADIUS = 100;
-const BATCH_SIZE = 1000;
 
-const ForceGraph = dynamic(() => import('./ForceGraph'), { 
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-screen flex items-center justify-center">
-      <Card className="p-4 bg-black/80 backdrop-blur-sm text-white">
-        Loading graph engine...
-      </Card>
-    </div>
-  )
-});
-
-interface GraphVisualizationProps {
+interface Props {
   searchTerm?: string;
   selectedStyles?: string[];
 }
 
-export default function GraphVisualization({ 
-  searchTerm = '', 
-  selectedStyles = [] 
-}: GraphVisualizationProps) {
+export default function GraphVisualization({
+  searchTerm = '',
+  selectedStyles = []
+}: Props) {
+  const graphRef = useRef();
+  const workerRef = useRef<Worker>();
+  const [data, setData] = useState({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [links, setLinks] = useState<GraphLink[]>([]);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const workerRef = useRef<Worker>();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const initializeWorker = async () => {
-      try {
-        workerRef.current = new Worker(
-          new URL('./graphWorker.ts', import.meta.url),
-          { type: 'module' }
-        );
+    try {
+      workerRef.current = new Worker(
+        new URL('./graphWorker.ts', import.meta.url)
+      );
+      
+      workerRef.current.onmessage = (event) => {
+        const { type, data: responseData } = event.data;
+        switch (type) {
+          case 'NODES_PROCESSED':
+          case 'NODES_UPDATED':
+            setData(responseData);
+            setLoading(false);
+            break;
+          case 'ERROR':
+            console.error('Worker error:', responseData);
+            setError(responseData);
+            setLoading(false);
+            break;
+        }
+      };
 
-        workerRef.current.onmessage = (event) => {
-          const { type, data } = event.data;
-          switch (type) {
-            case 'NODES_PROCESSED':
-            case 'NODES_UPDATED':
-              setNodes(data.nodes);
-              setLinks(data.links);
-              setLoading(false);
-              break;
-            case 'NODE_DETAILS':
-              setSelectedNode(data);
-              break;
-            case 'ERROR':
-              console.error('Worker error:', data);
-              setError(data);
-              setLoading(false);
-              break;
-          }
-        };
+      // Load initial data
+      fetch('/api/releases/2008')
+        .then(res => res.json())
+        .then(releases => {
+          if (!workerRef.current) return;
+          workerRef.current.postMessage({
+            type: 'INIT',
+            data: releases
+          });
+        })
+        .catch(err => {
+          console.error('Failed to load releases:', err);
+          setError('Failed to load data');
+          setLoading(false);
+        });
 
-        await loadInitialData();
-      } catch (error) {
-        console.error('Failed to initialize worker:', error);
-        setError(error instanceof Error ? error.message : 'Failed to initialize visualization');
-        setLoading(false);
-      }
-    };
-
-    initializeWorker();
+    } catch (error) {
+      console.error('Failed to initialize worker:', error);
+      setError(error instanceof Error ? error.message : 'Failed to initialize');
+    }
 
     return () => {
       workerRef.current?.terminate();
     };
   }, []);
 
-  const loadInitialData = async () => {
-    try {
-      const response = await fetch('/api/releases/2008');
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-      const releases = await response.json();
-      
-      if (!releases || !Array.isArray(releases)) {
-        throw new Error('Invalid data format received from server');
-      }
-
-      if (workerRef.current) {
-        workerRef.current.postMessage({
-          type: 'INIT',
-          data: releases
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load initial data:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load data');
-      setLoading(false);
-    }
-  };
-
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    setSelectedNode(node);
-    if (!workerRef.current) return;
-  
-    workerRef.current.postMessage({
-      type: 'LOAD_NODE_DETAILS',
-      nodeId: node.id
-    });
-  }, []);
-
-  const handleCameraMove = useCallback(
-    debounce((position: THREE.Vector3) => {
-      if (!workerRef.current) return;
-      
-      workerRef.current.postMessage({
-        type: 'UPDATE_VISIBLE',
-        position: { x: position.x, y: position.y, z: position.z },
-        radius: VISIBLE_RADIUS
-      });
-    }, 100),
-    []
-  );
-
   useEffect(() => {
     if (!workerRef.current) return;
 
     workerRef.current.postMessage({
       type: 'FILTER',
-      searchTerm,
-      selectedStyles
+      data: {
+        searchTerm: searchTerm || '',
+        selectedStyles: selectedStyles || []
+      }
     });
   }, [searchTerm, selectedStyles]);
 
+  const handleCameraMove = useCallback((position: THREE.Vector3) => {
+    if (!workerRef.current) return;
+    
+    workerRef.current.postMessage({
+      type: 'UPDATE_VISIBLE',
+      data: {
+        position: {
+          x: position.x,
+          y: position.y,
+          z: position.z
+        },
+        radius: VISIBLE_RADIUS
+      }
+    });
+  }, []);
+
   if (error) {
     return (
-      <div className="w-full h-screen flex items-center justify-center">
-        <Card className="p-4 bg-black/80 backdrop-blur-sm text-white">
-          <h3 className="text-xl font-bold text-red-500 mb-2">Error</h3>
-          <p className="text-sm text-gray-300">{error}</p>
-          <button 
-            onClick={() => {
-              setError(null);
-              setLoading(true);
-              loadInitialData();
-            }}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      <div className="flex h-screen items-center justify-center">
+        <Card className="p-6 bg-black/80 text-white">
+          <h3 className="text-xl font-bold text-red-500">Error</h3>
+          <p className="mt-2">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
           >
             Retry
           </button>
@@ -164,10 +128,10 @@ export default function GraphVisualization({
 
   if (loading) {
     return (
-      <div className="w-full h-screen flex items-center justify-center">
-        <Card className="p-4 bg-black/80 backdrop-blur-sm text-white">
-          <div className="flex flex-col items-center">
-            <div className="w-8 h-8 border-4 border-t-blue-500 border-b-blue-500 rounded-full animate-spin mb-4" />
+      <div className="flex h-screen items-center justify-center">
+        <Card className="p-6 bg-black/80 text-white">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-8 w-8 border-4 border-t-blue-500 rounded-full animate-spin"/>
             <p>Loading visualization...</p>
           </div>
         </Card>
@@ -177,35 +141,23 @@ export default function GraphVisualization({
 
   return (
     <div className="relative w-full h-screen bg-black">
-      <ForceGraph
-        nodes={nodes}
-        links={links}
-        onNodeClick={handleNodeClick}
-        onCameraMove={handleCameraMove}
-      />
-      
-      {selectedNode && (
-        <Card className="absolute top-4 right-4 p-4 w-96 bg-black/80 backdrop-blur-sm text-white border-none">
-          <h3 className="text-xl font-bold mb-2">{selectedNode.name}</h3>
-          <div className="space-y-2">
-            <p className="text-sm text-gray-300">Type: {selectedNode.type}</p>
-            {selectedNode.data?.artistNames && (
-              <p className="text-sm text-gray-300">
-                Artists: {selectedNode.data.artistNames.join(', ')}
-              </p>
-            )}
-            {selectedNode.data?.labelName && (
-              <p className="text-sm text-gray-300">
-                Label: {selectedNode.data.labelName}
-              </p>
-            )}
-            {selectedNode.data?.styles && (
-              <p className="text-sm text-gray-300">
-                Styles: {selectedNode.data.styles.join(', ')}
-              </p>
-            )}
-          </div>
-        </Card>
+      {data.nodes.length > 0 && (
+        <ForceGraph3D
+          ref={graphRef}
+          graphData={data}
+          nodeLabel={node => `${node.name}\n${node.data?.artistNames?.join(', ') || ''}`}
+          nodeColor={node => NODE_COLORS[node.type] || '#ffffff'}
+          nodeVal={node => node.type === 'cluster' ? 8 : 5}
+          nodeOpacity={0.75}
+          backgroundColor="#000000"
+          showNavInfo={false}
+          onEngineStop={() => {
+            const camera = (graphRef.current as any)?.camera();
+            if (camera) {
+              handleCameraMove(camera.position);
+            }
+          }}
+        />
       )}
     </div>
   );
