@@ -5,7 +5,11 @@ import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/card';
 import * as THREE from 'three';
 
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
+// Import ForceGraph3D dynamiquement mais avec les bonnes options
+const ForceGraph3D = dynamic(
+  () => import('react-force-graph-3d').then((mod) => mod.default),
+  { ssr: false }
+);
 
 const NODE_COLORS = {
   release: '#4CAF50',
@@ -14,22 +18,20 @@ const NODE_COLORS = {
   cluster: '#FFC107'
 };
 
-const VISIBLE_RADIUS = 100;
+const INITIAL_CAMERA_Z = 1000;
 
 interface Props {
   searchTerm?: string;
   selectedStyles?: string[];
 }
 
-export default function GraphVisualization({
-  searchTerm = '',
-  selectedStyles = []
-}: Props) {
-  const graphRef = useRef();
+export default function GraphVisualization({ searchTerm = '', selectedStyles = [] }: Props) {
+  const fgRef = useRef<any>();
   const workerRef = useRef<Worker>();
-  const [data, setData] = useState({ nodes: [], links: [] });
+  const [data, setData] = useState<{ nodes: any[]; links: any[]; }>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<any | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -41,6 +43,8 @@ export default function GraphVisualization({
       
       workerRef.current.onmessage = (event) => {
         const { type, data: responseData } = event.data;
+        console.log('Worker response:', type, responseData);
+        
         switch (type) {
           case 'NODES_PROCESSED':
           case 'NODES_UPDATED':
@@ -59,11 +63,13 @@ export default function GraphVisualization({
       fetch('/api/releases/2008')
         .then(res => res.json())
         .then(releases => {
-          if (!workerRef.current) return;
-          workerRef.current.postMessage({
-            type: 'INIT',
-            data: releases
-          });
+          console.log('Fetched releases:', releases.length);
+          if (workerRef.current) {
+            workerRef.current.postMessage({
+              type: 'INIT',
+              data: releases
+            });
+          }
         })
         .catch(err => {
           console.error('Failed to load releases:', err);
@@ -81,33 +87,63 @@ export default function GraphVisualization({
     };
   }, []);
 
-  useEffect(() => {
-    if (!workerRef.current) return;
+  // Handle node click
+  const handleNodeClick = useCallback((node: any) => {
+    setSelectedNode(node);
 
-    workerRef.current.postMessage({
-      type: 'FILTER',
-      data: {
-        searchTerm: searchTerm || '',
-        selectedStyles: selectedStyles || []
-      }
-    });
-  }, [searchTerm, selectedStyles]);
-
-  const handleCameraMove = useCallback((position: THREE.Vector3) => {
-    if (!workerRef.current) return;
+    if (!fgRef.current || !node?.x) return;
     
-    workerRef.current.postMessage({
-      type: 'UPDATE_VISIBLE',
-      data: {
-        position: {
-          x: position.x,
-          y: position.y,
-          z: position.z
-        },
-        radius: VISIBLE_RADIUS
-      }
-    });
+    const distance = 200;
+    const position = new THREE.Vector3(node.x, node.y, node.z);
+    const normal = position.clone().normalize();
+    const cameraPosition = normal.multiplyScalar(distance).add(position);
+    
+    fgRef.current.cameraPosition(
+      cameraPosition,
+      position, // lookAt
+      2000  // transition duration (ms)
+    );
   }, []);
+
+  // Graph configuration
+  const graphConfig = {
+    nodeLabel: (node: any) => `${node.name}\n${node.data?.artistNames?.join(', ') || ''}`,
+    nodeColor: (node: any) => NODE_COLORS[node.type] || '#ffffff',
+    nodeVal: (node: any) => node.type === 'cluster' ? 8 : 5,
+    nodeOpacity: 0.75,
+    linkWidth: 2,
+    linkOpacity: 0.2,
+    backgroundColor: '#000000',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    showNavInfo: false,
+    nodeThreeObject: (node: any) => {
+      const geometry = new THREE.SphereGeometry(node.type === 'cluster' ? 8 : 5);
+      const material = new THREE.MeshPhongMaterial({
+        color: NODE_COLORS[node.type] || '#ffffff',
+        transparent: true,
+        opacity: 0.75,
+        shininess: 100
+      });
+      return new THREE.Mesh(geometry, material);
+    },
+    linkDirectionalParticles: 2,
+    linkDirectionalParticleWidth: 2,
+    linkDirectionalParticleSpeed: 0.005,
+    d3Force: (d3Force: any) => {
+      if (!d3Force) return;
+      
+      // Adjust forces for better stability
+      d3Force.force('charge')?.strength(-100);
+      d3Force.force('link')
+        ?.distance(50)
+        ?.strength(0.3);
+      d3Force.force('center')?.strength(0.05);
+      
+      // Add some damping
+      d3Force.velocityDecay(0.3);
+    }
+  };
 
   if (error) {
     return (
@@ -142,22 +178,37 @@ export default function GraphVisualization({
   return (
     <div className="relative w-full h-screen bg-black">
       {data.nodes.length > 0 && (
-        <ForceGraph3D
-          ref={graphRef}
-          graphData={data}
-          nodeLabel={node => `${node.name}\n${node.data?.artistNames?.join(', ') || ''}`}
-          nodeColor={node => NODE_COLORS[node.type] || '#ffffff'}
-          nodeVal={node => node.type === 'cluster' ? 8 : 5}
-          nodeOpacity={0.75}
-          backgroundColor="#000000"
-          showNavInfo={false}
-          onEngineStop={() => {
-            const camera = (graphRef.current as any)?.camera();
-            if (camera) {
-              handleCameraMove(camera.position);
-            }
-          }}
-        />
+        <>
+          <ForceGraph3D
+            ref={fgRef}
+            graphData={data}
+            {...graphConfig}
+            onNodeClick={handleNodeClick}
+          />
+          {selectedNode && (
+            <Card className="absolute top-4 right-4 p-4 w-96 bg-black/80 backdrop-blur-sm text-white">
+              <h3 className="text-xl font-bold mb-2">{selectedNode.name}</h3>
+              <div className="space-y-2">
+                <p className="text-gray-300">Type: {selectedNode.type}</p>
+                {selectedNode.data?.artistNames && (
+                  <p className="text-gray-300">
+                    Artists: {selectedNode.data.artistNames.join(', ')}
+                  </p>
+                )}
+                {selectedNode.data?.labelName && (
+                  <p className="text-gray-300">
+                    Label: {selectedNode.data.labelName}
+                  </p>
+                )}
+                {selectedNode.data?.styles && (
+                  <p className="text-gray-300">
+                    Styles: {selectedNode.data.styles.join(', ')}
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );
