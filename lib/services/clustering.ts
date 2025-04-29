@@ -2,54 +2,86 @@
 import { ElectronicRelease } from '@prisma/client';
 import _ from 'lodash';
 
-interface ProcessedNode {
+export interface ClusterNode {
   id: string;
-  type: 'release' | 'cluster';
-  data: any;
-  position: [number, number, number];
+  name: string;
+  type: 'cluster';
+  size: number;
+  color?: string;
+  childCount: number;
+  data: {
+    style: string;
+    count: number;
+  };
 }
 
-export function processReleaseData(releases: ElectronicRelease[]) {
-  // Grouper par style principal
-  const styleGroups = _.groupBy(releases, r => r.styles[0] || 'Unknown');
+export interface ReleaseNode {
+  id: string;
+  name: string;
+  type: 'release';
+  size: number;
+  color?: string;
+  data: Partial<ElectronicRelease>;
+}
+
+export interface Link {
+  source: string;
+  target: string;
+  value: number;
+  type?: string;
+}
+
+export function clusterReleases(releases: Partial<ElectronicRelease>[]) {
+  console.log(`Clustering ${releases.length} releases...`);
   
-  // Créer les clusters
-  const clusters = Object.entries(styleGroups).map(([style, items]) => ({
+  // Group releases by primary style
+  const styleGroups = _.groupBy(releases, r => r.styles?.[0] || 'Unknown');
+  
+  // Create cluster nodes
+  const clusters: ClusterNode[] = Object.entries(styleGroups).map(([style, items]) => ({
     id: `cluster-${style}`,
+    name: style,
     type: 'cluster',
+    size: Math.sqrt(items.length) * 2,
+    childCount: items.length,
     data: {
-      name: style,
-      count: items.length,
-      style
+      style,
+      count: items.length
     }
   }));
 
-  // Traiter les releases individuelles
-  const nodes = releases.map(release => ({
-    id: release.id,
-    type: 'release',
-    data: {
-      title: release.title,
-      artists: release.artistNames,
-      label: release.labelName,
-      style: release.styles[0]
-    }
-  }));
-
-  // Créer les liens
-  const links = [];
+  // Create links between clusters and releases
+  const links: Link[] = [];
+  
+  // Link releases to their style clusters
   releases.forEach(release => {
-    if (release.styles[0]) {
+    const style = release.styles?.[0];
+    if (style) {
       links.push({
         source: release.id,
-        target: `cluster-${release.styles[0]}`,
+        target: `cluster-${style}`,
+        value: 1,
         type: 'style'
       });
     }
   });
-
-  return {
-    nodes: [...clusters, ...nodes],
-    links
-  };
+  
+  // Link releases with the same label
+  const labelGroups = _.groupBy(releases, r => r.labelName);
+  Object.values(labelGroups).forEach(group => {
+    if (group.length > 1) {
+      for (let i = 0; i < group.length - 1; i++) {
+        links.push({
+          source: group[i].id,
+          target: group[i + 1].id,
+          value: 0.5,
+          type: 'label'
+        });
+      }
+    }
+  });
+  
+  console.log(`Created ${clusters.length} clusters and ${links.length} links`);
+  
+  return { clusters, links };
 }
